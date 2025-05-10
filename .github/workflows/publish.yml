@@ -20,19 +20,19 @@ jobs:
     strategy:
       matrix:
         include:
+          - pg_major_version: 17
+            postgis_major_version: 3
+            pgvector_tag: v0.8.0
+            latest_tag_suffix: true
           - pg_major_version: 16
             postgis_major_version: 3
             pgvector_tag: v0.8.0
-            latest_tag_suffix: true # This combination will also be tagged 'latest'
+            latest_tag_suffix: false
           - pg_major_version: 15
             postgis_major_version: 3
             pgvector_tag: v0.8.0
             latest_tag_suffix: false
-          - pg_major_version: 16
-            postgis_major_version: 3
-            pgvector_tag: v0.7.2
-            latest_tag_suffix: false
-          - pg_major_version: 15
+          - pg_major_version: 14
             postgis_major_version: 3
             pgvector_tag: v0.7.2
             latest_tag_suffix: false
