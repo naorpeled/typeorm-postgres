@@ -5,9 +5,9 @@ services:
     build:
       context: .
       args:
-        PG_MAJOR: ${PG_MAJOR:-16}
-        POSTGIS_MAJOR_VERSION: ${POSTGIS_MAJOR_VERSION:-3}
-        PGVECTOR_VERSION: ${PGVECTOR_VERSION:-v0.8.0}
+        MY_PG_VER: ${PG_MAJOR:-16}
+        MY_POSTGIS_VER: ${POSTGIS_MAJOR_VERSION:-3}
+        MY_PGVECTOR_VER: ${PGVECTOR_VERSION:-v0.8.0}
     environment:
       # TypeORM test defaults
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-test}

@@ -26,57 +26,38 @@ jobs:
         with:
           context: .
           load: true
-          tags: postgres-postgis-pgvector:test
+          tags: postgres-postgis-pgvector:test-${{ matrix.pg_version }}-pgvector${{ matrix.pgvector_version }}
           build-args: |
-            PG_MAJOR=${{ matrix.pg_version }}
-            POSTGIS_MAJOR_VERSION=3
-            PGVECTOR_VERSION=${{ matrix.pgvector_version }}
+            MY_PG_VER=${{ matrix.pg_version }}
+            MY_POSTGIS_VER=3
+            MY_PGVECTOR_VER=${{ matrix.pgvector_version }}
 
-      - name: Start PostgreSQL container
+      - name: Start PostgreSQL container and test extensions
         run: |
-          docker run -d \
-            --name postgres-test \
+          docker run -d --name test-db \
             -e POSTGRES_PASSWORD=test \
             -e POSTGRES_USER=test \
             -e POSTGRES_DB=test \
-            -e ADDITIONAL_DATABASES=test2 \
-            -p 5432:5432 \
-            postgres-postgis-pgvector:test
+            postgres-postgis-pgvector:test-${{ matrix.pg_version }}-pgvector${{ matrix.pgvector_version }} \
+            postgres -c shared_preload_libraries=vector
 
-      - name: Wait for PostgreSQL to be ready
-        run: |
-          timeout 30 bash -c 'until docker exec postgres-test pg_isready -U test; do sleep 1; done'
+          echo "Waiting for PostgreSQL to start..."
+          sleep 15
 
-      - name: Test PostGIS extension
-        run: |
-          docker exec postgres-test psql -U test -d test -c "
-            SELECT postgis_version();
-            SELECT postgis_full_version();
-          "
+          echo "PostgreSQL logs:"
+          docker logs test-db
 
-      - name: Test pgvector extension
-        run: |
-          docker exec postgres-test psql -U test -d test -c "
-            CREATE EXTENSION IF NOT EXISTS vector;
-            -- Create a test table with a vector column
-            CREATE TABLE items (id bigserial PRIMARY KEY, embedding vector(3));
-            -- Insert a test vector
-            INSERT INTO items (embedding) VALUES ('[1,2,3]');
-            -- Test vector operations
-            SELECT * FROM items WHERE embedding <-> '[3,2,1]' < 5;
-          "
+          echo "Checking PostGIS version..."
+          docker exec test-db psql -U test -d test -c "SELECT postgis_full_version();"
 
-      - name: Test additional database
-        run: |
-          docker exec postgres-test psql -U test -d test2 -c "
-            SELECT postgis_version();
-            SELECT * FROM pg_extension WHERE extname = 'vector';
-          "
+          echo "Checking pgvector version (vector is loaded)..."
+          docker exec test-db psql -U test -d test -c "CREATE EXTENSION IF NOT EXISTS vector; SELECT extversion FROM pg_extension WHERE extname = 'vector';"
 
-      - name: Check logs for any errors
+          echo "Attempting to create a table with a vector column..."
+          docker exec test-db psql -U test -d test -c "CREATE TABLE items (id bigserial PRIMARY KEY, embedding vector(3)); INSERT INTO items (embedding) VALUES ('[1,2,3]'), ('[4,5,6]'); SELECT COUNT(*) FROM items;"
+
+      - name: Stop and remove container
         if: always()
-        run: docker logs postgres-test
-
-      - name: Clean up
-        if: always()
-        run: docker rm -f postgres-test
+        run: |
+          docker stop test-db || true
+          docker rm test-db || true

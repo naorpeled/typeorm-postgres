@@ -14,19 +14,6 @@ enable_extensions() {
         
         -- Enable pgvector extension
         CREATE EXTENSION IF NOT EXISTS vector;
-        
-        -- Configure shared_preload_libraries for pgvector
-        DO \$\$
-        DECLARE
-            current_libs TEXT;
-        BEGIN
-            SELECT setting INTO current_libs FROM pg_settings WHERE name = 'shared_preload_libraries';
-            IF current_libs IS NULL OR current_libs = '' THEN
-                EXECUTE 'ALTER SYSTEM SET shared_preload_libraries = ''pgvector''';
-            ELSIF POSITION('pgvector' IN current_libs) = 0 THEN
-                EXECUTE 'ALTER SYSTEM SET shared_preload_libraries = ''' || current_libs || ',pgvector''';
-            END IF;
-        END \$\$;
 EOSQL
 }
 
