@@ -19,21 +19,25 @@ ENV PG_MAJOR_VERSION=${PG_MAJOR_VERSION} \
     POSTGIS_MAJOR_VERSION=${POSTGIS_MAJOR_VERSION} \
     PGVECTOR_TAG=${PGVECTOR_TAG}
 
-# Install base dependencies for adding repositories and building
+# Install base dependencies, setup PGDG repository, and install build tools
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
     lsb-release \
     gnupg \
     ca-certificates \
     wget \
+    # Add PostgreSQL official repository
+    && sh -c 'echo "deb http://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" > /etc/apt/sources.list.d/pgdg.list' \
+    && wget --quiet -O - https://www.postgresql.org/media/keys/ACCC4CF8.asc | apt-key add - \
+    # Update package lists again after adding the new repository
+    && apt-get update \
+    # Install build tools and PostgreSQL development packages from PGDG
+    && apt-get install -y --no-install-recommends \
     build-essential \
     git \
     make \
     gcc \
-    "postgresql-server-dev-${PG_MAJOR_VERSION}" \
-    # Add PostgreSQL official repository
-    && sh -c 'echo "deb http://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" > /etc/apt/sources.list.d/pgdg.list' \
-    && wget --quiet -O - https://www.postgresql.org/media/keys/ACCC4CF8.asc | apt-key add -
+    "postgresql-server-dev-${PG_MAJOR_VERSION}"
 
 # Install PostGIS
 RUN apt-get update \
