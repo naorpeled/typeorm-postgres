@@ -1,13 +1,13 @@
 # Default versions - can be overridden at build time using --build-arg
 ARG PG_MAJOR=16
 ARG POSTGIS_MAJOR_VERSION=3
-ARG PGVECTOR_VERSION=v0.7.2
+ARG PGVECTOR_VERSION=v0.8.0
 
 FROM postgres:${PG_MAJOR}
 
 LABEL maintainer="Naor Peled me@naor.dev"
 LABEL description="PostgreSQL with PostGIS and pgvector extensions"
-LABEL org.opencontainers.image.source="https://github.com/naorpeled/postgis_pgvector"
+LABEL org.opencontainers.image.source="https://github.com/naorpeled/typeorm-postgres-docker"
 
 # Set ENV vars from ARGs for use in subsequent RUN commands and runtime inspection
 ENV POSTGIS_MAJOR_VERSION=${POSTGIS_MAJOR_VERSION} \
@@ -22,17 +22,17 @@ RUN apt-get update \
     gnupg \
     ca-certificates \
     wget \
-    # Build tools for pgvector
+    # Build tools
     build-essential \
     git \
     make \
     gcc \
     postgresql-server-dev-${PG_MAJOR} \
-    # Add PostgreSQL repository for latest PostGIS
-    && wget --quiet -O /usr/share/keyrings/postgresql-archive-keyring.asc https://www.postgresql.org/media/keys/ACCC4CF8.asc \
-    && echo "deb [signed-by=/usr/share/keyrings/postgresql-archive-keyring.asc] http://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main ${PG_MAJOR}" > /etc/apt/sources.list.d/pgdg.list \
+    # Add PostgreSQL repository
+    && sh -c 'echo "deb http://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" > /etc/apt/sources.list.d/pgdg.list' \
+    && wget --quiet -O - https://www.postgresql.org/media/keys/ACCC4CF8.asc | apt-key add - \
+    # Update and install PostGIS
     && apt-get update \
-    # Install PostGIS
     && apt-get install -y --no-install-recommends \
     postgis \
     postgresql-${PG_MAJOR}-postgis-${POSTGIS_MAJOR_VERSION} \
