@@ -15,7 +15,7 @@ jobs:
         # Renaming for clarity in matrix, maps to Dockerfile ARGs
         pg_version_matrix: [16, 15] # Corresponds to PG_MAJOR_VERSION
         pgvector_tag_matrix: [v0.8.0, v0.7.2] # Corresponds to PGVECTOR_TAG
-        # POSTGIS_MAJOR_VERSION defaults to 3 in Dockerfile and is not matrixed here
+        # POSTGIS_MAJOR_VERSION is set to 3 directly in build-args below
 
     steps:
       - uses: actions/checkout@v4
@@ -32,7 +32,7 @@ jobs:
           tags: postgres-postgis-pgvector:test-${{ matrix.pg_version_matrix }}-pgvector${{ matrix.pgvector_tag_matrix }}
           build-args: |
             PG_MAJOR_VERSION=${{ matrix.pg_version_matrix }}
-            POSTGIS_MAJOR_VERSION=3 # Keep PostGIS version fixed for these tests, or add to matrix
+            POSTGIS_MAJOR_VERSION=3
             PGVECTOR_TAG=${{ matrix.pgvector_tag_matrix }}
 
       - name: Start PostgreSQL container and test extensions
