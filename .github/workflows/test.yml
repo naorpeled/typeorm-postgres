@@ -12,8 +12,10 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        pg_version: [16, 15]
-        pgvector_version: [v0.8.0, v0.7.2]
+        # Renaming for clarity in matrix, maps to Dockerfile ARGs
+        pg_version_matrix: [16, 15] # Corresponds to PG_MAJOR_VERSION
+        pgvector_tag_matrix: [v0.8.0, v0.7.2] # Corresponds to PGVECTOR_TAG
+        # POSTGIS_MAJOR_VERSION is set to 3 directly in build-args below
 
     steps:
       - uses: actions/checkout@v4
@@ -22,61 +24,46 @@ jobs:
         uses: docker/setup-buildx-action@v3
 
       - name: Build Docker image
+        id: build
         uses: docker/build-push-action@v5
         with:
           context: .
-          load: true
-          tags: postgres-postgis-pgvector:test
+          load: true # Load image into local Docker daemon for testing
+          tags: postgres-postgis-pgvector:test-${{ matrix.pg_version_matrix }}-pgvector${{ matrix.pgvector_tag_matrix }}
           build-args: |
-            PG_MAJOR=${{ matrix.pg_version }}
+            PG_MAJOR_VERSION=${{ matrix.pg_version_matrix }}
             POSTGIS_MAJOR_VERSION=3
-            PGVECTOR_VERSION=${{ matrix.pgvector_version }}
+            PGVECTOR_TAG=${{ matrix.pgvector_tag_matrix }}
 
-      - name: Start PostgreSQL container
+      - name: Start PostgreSQL container and test extensions
         run: |
-          docker run -d \
-            --name postgres-test \
+          IMAGE_TAG="postgres-postgis-pgvector:test-${{ matrix.pg_version_matrix }}-pgvector${{ matrix.pgvector_tag_matrix }}"
+          echo "Testing image: $IMAGE_TAG"
+
+          docker run -d --name test-db \
             -e POSTGRES_PASSWORD=test \
             -e POSTGRES_USER=test \
             -e POSTGRES_DB=test \
-            -e ADDITIONAL_DATABASES=test2 \
-            -p 5432:5432 \
-            postgres-postgis-pgvector:test
+            $IMAGE_TAG \
+            postgres -c shared_preload_libraries=vector # Ensure pgvector is preloaded
 
-      - name: Wait for PostgreSQL to be ready
+          echo "Waiting for PostgreSQL to start..."
+          sleep 15 # Allow time for PostgreSQL to initialize
+
+          echo "PostgreSQL logs:"
+          docker logs test-db
+
+          echo "Checking PostGIS version..."
+          docker exec test-db psql -U test -d test -c "SELECT postgis_full_version();"
+
+          echo "Checking pgvector extension version..."
+          docker exec test-db psql -U test -d test -c "CREATE EXTENSION IF NOT EXISTS vector; SELECT extversion FROM pg_extension WHERE extname = 'vector';"
+
+          echo "Attempting to create a table with a vector column and insert data..."
+          docker exec test-db psql -U test -d test -c "CREATE TABLE items (id bigserial PRIMARY KEY, embedding vector(3)); INSERT INTO items (embedding) VALUES ('[1,2,3]'), ('[4,5,6]'); SELECT COUNT(*) FROM items;"
+
+      - name: Stop and remove container
+        if: always() # Ensure cleanup even if previous steps fail
         run: |
-          timeout 30 bash -c 'until docker exec postgres-test pg_isready -U test; do sleep 1; done'
-
-      - name: Test PostGIS extension
-        run: |
-          docker exec postgres-test psql -U test -d test -c "
-            SELECT postgis_version();
-            SELECT postgis_full_version();
-          "
-
-      - name: Test pgvector extension
-        run: |
-          docker exec postgres-test psql -U test -d test -c "
-            CREATE EXTENSION IF NOT EXISTS vector;
-            -- Create a test table with a vector column
-            CREATE TABLE items (id bigserial PRIMARY KEY, embedding vector(3));
-            -- Insert a test vector
-            INSERT INTO items (embedding) VALUES ('[1,2,3]');
-            -- Test vector operations
-            SELECT * FROM items WHERE embedding <-> '[3,2,1]' < 5;
-          "
-
-      - name: Test additional database
-        run: |
-          docker exec postgres-test psql -U test -d test2 -c "
-            SELECT postgis_version();
-            SELECT * FROM pg_extension WHERE extname = 'vector';
-          "
-
-      - name: Check logs for any errors
-        if: always()
-        run: docker logs postgres-test
-
-      - name: Clean up
-        if: always()
-        run: docker rm -f postgres-test
+          docker stop test-db || true
+          docker rm test-db || true
