@@ -57,7 +57,8 @@ jobs:
         with:
           images: ${{ env.REGISTRY }}/${{ github.repository_owner }}/${{ github.event.repository.name }}
           tags: |
-            type=raw,value=pg${{ matrix.pg_major_version }}-postgis${{ matrix.postgis_major_version }}-pgvector${{ matrix.pgvector_tag }}\n{{#if matrix.latest_tag_suffix}}latest{{/if}}
+            type=raw,value=pg${{ matrix.pg_major_version }}-postgis${{ matrix.postgis_major_version }}-pgvector${{ matrix.pgvector_tag }}
+            type=raw,value=latest,enable=${{ matrix.latest_tag_suffix }}
             type=ref,event=tag # Add tag from git tag if event is a tag push (e.g., v1.0.0)
 
       - name: Build and push Docker image
