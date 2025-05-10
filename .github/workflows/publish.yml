@@ -1,0 +1,77 @@
+name: Publish Docker image
+
+on:
+  push:
+    tags: ["v*.*.*"]
+  workflow_dispatch:
+
+env:
+  REGISTRY: ghcr.io
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+
+    strategy:
+      matrix:
+        include:
+          # Latest PostgreSQL with latest pgvector
+          - pg_version: 16
+            pgvector_version: v0.8.0
+            latest: true
+          # Previous PostgreSQL with latest pgvector
+          - pg_version: 15
+            pgvector_version: v0.8.0
+            latest: false
+          # Latest PostgreSQL with previous pgvector
+          - pg_version: 16
+            pgvector_version: v0.7.2
+            latest: false
+          # Previous PostgreSQL with previous pgvector
+          - pg_version: 15
+            pgvector_version: v0.7.2
+            latest: false
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Log in to the Container registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract metadata (tags, labels) for Docker
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ github.repository }}
+          tags: |
+            type=raw,value=pg${{ matrix.pg_version }}-pgvector${{ matrix.pgvector_version }}
+            type=raw,value=latest,enable=${{ matrix.latest }}
+          labels: |
+            org.opencontainers.image.title=PostgreSQL with PostGIS and pgvector
+            org.opencontainers.image.description=PostgreSQL ${{ matrix.pg_version }} with PostGIS 3 and pgvector ${{ matrix.pgvector_version }}
+            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          build-args: |
+            PG_MAJOR=${{ matrix.pg_version }}
+            POSTGIS_MAJOR_VERSION=3
+            PGVECTOR_VERSION=${{ matrix.pgvector_version }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max

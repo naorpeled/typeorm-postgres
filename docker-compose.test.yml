@@ -1,0 +1,44 @@
+version: "3.8"
+
+services:
+  postgres:
+    build:
+      context: .
+      args:
+        PG_MAJOR: ${PG_MAJOR:-16}
+        POSTGIS_MAJOR_VERSION: ${POSTGIS_MAJOR_VERSION:-3}
+        PGVECTOR_VERSION: ${PGVECTOR_VERSION:-v0.7.2}
+    environment:
+      POSTGRES_PASSWORD: test
+      POSTGRES_USER: test
+      POSTGRES_DB: test
+      ADDITIONAL_DATABASES: test2
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U test"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  test:
+    image: postgres:${PG_MAJOR:-16}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    volumes:
+      - ./tests:/tests
+    environment:
+      PGHOST: postgres
+      PGUSER: test
+      PGPASSWORD: test
+      PGDATABASE: test
+    command: >
+      bash -c '
+        psql -c "SELECT postgis_version();" &&
+        psql -c "SELECT postgis_full_version();" &&
+        psql -c "CREATE EXTENSION IF NOT EXISTS vector;" &&
+        psql -c "CREATE TABLE items (id bigserial PRIMARY KEY, embedding vector(3));" &&
+        psql -c "INSERT INTO items (embedding) VALUES ('\''[1,2,3]'\'');" &&
+        psql -c "SELECT * FROM items WHERE embedding <-> '\''[3,2,1]'\'' < 5;" &&
+        psql -d test2 -c "SELECT postgis_version();" &&
+        psql -d test2 -c "SELECT * FROM pg_extension WHERE extname = '\''vector'\'';"
+      '

@@ -1,0 +1,82 @@
+name: Test Docker Build and Extensions
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        pg_version: [16, 15]
+        pgvector_version: [v0.8.0, v0.7.2]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          load: true
+          tags: postgres-postgis-pgvector:test
+          build-args: |
+            PG_MAJOR=${{ matrix.pg_version }}
+            POSTGIS_MAJOR_VERSION=3
+            PGVECTOR_VERSION=${{ matrix.pgvector_version }}
+
+      - name: Start PostgreSQL container
+        run: |
+          docker run -d \
+            --name postgres-test \
+            -e POSTGRES_PASSWORD=test \
+            -e POSTGRES_USER=test \
+            -e POSTGRES_DB=test \
+            -e ADDITIONAL_DATABASES=test2 \
+            -p 5432:5432 \
+            postgres-postgis-pgvector:test
+
+      - name: Wait for PostgreSQL to be ready
+        run: |
+          timeout 30 bash -c 'until docker exec postgres-test pg_isready -U test; do sleep 1; done'
+
+      - name: Test PostGIS extension
+        run: |
+          docker exec postgres-test psql -U test -d test -c "
+            SELECT postgis_version();
+            SELECT postgis_full_version();
+          "
+
+      - name: Test pgvector extension
+        run: |
+          docker exec postgres-test psql -U test -d test -c "
+            CREATE EXTENSION IF NOT EXISTS vector;
+            -- Create a test table with a vector column
+            CREATE TABLE items (id bigserial PRIMARY KEY, embedding vector(3));
+            -- Insert a test vector
+            INSERT INTO items (embedding) VALUES ('[1,2,3]');
+            -- Test vector operations
+            SELECT * FROM items WHERE embedding <-> '[3,2,1]' < 5;
+          "
+
+      - name: Test additional database
+        run: |
+          docker exec postgres-test psql -U test -d test2 -c "
+            SELECT postgis_version();
+            SELECT * FROM pg_extension WHERE extname = 'vector';
+          "
+
+      - name: Check logs for any errors
+        if: always()
+        run: docker logs postgres-test
+
+      - name: Clean up
+        if: always()
+        run: docker rm -f postgres-test

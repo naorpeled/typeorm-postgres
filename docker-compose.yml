@@ -1,0 +1,33 @@
+version: "3.8"
+
+services:
+  db:
+    build:
+      context: .
+      args:
+        PG_MAJOR: ${PG_MAJOR:-16}
+        POSTGIS_MAJOR_VERSION: ${POSTGIS_MAJOR_VERSION:-3}
+        PGVECTOR_VERSION: ${PGVECTOR_VERSION:-v0.8.0}
+    environment:
+      # TypeORM test defaults
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-test}
+      POSTGRES_USER: ${POSTGRES_USER:-test}
+      POSTGRES_DB: ${POSTGRES_DB:-test}
+      # For TypeORM CI testing, use:
+      # POSTGRES_USER: test
+      # POSTGRES_PASSWORD: test
+      # POSTGRES_DB: test
+      # Optional: Comma-separated list of additional databases to create
+      ADDITIONAL_DATABASES: ${ADDITIONAL_DATABASES:-}
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-test}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  postgres_data:
