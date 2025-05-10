@@ -1,80 +1,70 @@
 # Default versions - can be overridden at build time using --build-arg
-ARG MY_PG_VER=16
-ARG MY_POSTGIS_VER=3
-ARG MY_PGVECTOR_VER=v0.8.0
+ARG PG_MAJOR_VERSION=16
+ARG POSTGIS_MAJOR_VERSION=3
+ARG PGVECTOR_TAG=v0.8.0
 
-FROM postgres:${MY_PG_VER}
+FROM postgres:${PG_MAJOR_VERSION}
 
 # Re-declare ARGs after FROM to make them available in this build stage
-ARG MY_PG_VER
-ARG MY_POSTGIS_VER
-ARG MY_PGVECTOR_VER
+ARG PG_MAJOR_VERSION
+ARG POSTGIS_MAJOR_VERSION
+ARG PGVECTOR_TAG
 
 LABEL maintainer="Naor Peled me@naor.dev"
-LABEL description="PostgreSQL with PostGIS and pgvector extensions"
+LABEL description="PostgreSQL with PostGIS and pgvector extensions for TypeORM"
 LABEL org.opencontainers.image.source="https://github.com/naorpeled/typeorm-postgres-docker"
 
-# Set ENV vars from ARGs for runtime inspection (using different names to avoid confusion with ARGs)
-ENV RT_PG_MAJOR=${MY_PG_VER} \
-    RT_POSTGIS_MAJOR_VERSION=${MY_POSTGIS_VER} \
-    RT_PGVECTOR_VERSION=${MY_PGVECTOR_VER}
+# Set ENV vars from ARGs for runtime inspection and use within the container
+ENV PG_MAJOR_VERSION=${PG_MAJOR_VERSION} \
+    POSTGIS_MAJOR_VERSION=${POSTGIS_MAJOR_VERSION} \
+    PGVECTOR_TAG=${PGVECTOR_TAG}
 
-# Install build dependencies and PostgreSQL development packages
+# Install base dependencies for adding repositories and building
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
-    # Tools for adding repositories
     lsb-release \
     gnupg \
     ca-certificates \
     wget \
-    # Build tools
     build-essential \
     git \
     make \
     gcc \
-    "postgresql-server-dev-${MY_PG_VER}" \
-    # Add PostgreSQL repository
+    "postgresql-server-dev-${PG_MAJOR_VERSION}" \
+    # Add PostgreSQL official repository
     && sh -c 'echo "deb http://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" > /etc/apt/sources.list.d/pgdg.list' \
     && wget --quiet -O - https://www.postgresql.org/media/keys/ACCC4CF8.asc | apt-key add -
 
 # Install PostGIS
-RUN effective_pg_major_shell="$MY_PG_VER" \
-    && effective_postgis_major_shell="$MY_POSTGIS_VER" \
-    && apt-get update \
+RUN apt-get update \
     && apt-get install -y --no-install-recommends \
     postgis \
-    "postgresql-${effective_pg_major_shell}-postgis-${effective_postgis_major_shell}" \
-    "postgresql-${effective_pg_major_shell}-postgis-${effective_postgis_major_shell}-scripts"
+    "postgresql-${PG_MAJOR_VERSION}-postgis-${POSTGIS_MAJOR_VERSION}" \
+    "postgresql-${PG_MAJOR_VERSION}-postgis-${POSTGIS_MAJOR_VERSION}-scripts"
 
 # Build and install pgvector
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends git make gcc "postgresql-server-dev-${MY_PG_VER}" \
-    # pgvector build might need some dev tools re-installed if previous purge was too aggressive
-    # or ensure build-essential is available through the whole multi-RUN sequence.
-    # For now, assuming postgresql-server-dev-${MY_PG_VER}, git, make, gcc are sufficient here.
+    # Ensure build tools are available for this layer if they were aggressively purged before,
+    # or if previous RUN commands didn't include them and they are needed.
+    # For pgvector, we need git, make, gcc, and postgresql-server-dev.
+    && apt-get install -y --no-install-recommends git make gcc "postgresql-server-dev-${PG_MAJOR_VERSION}" \
     && mkdir -p /usr/src/pgvector \
-    && git clone --branch "${MY_PGVECTOR_VER}" https://github.com/pgvector/pgvector.git /usr/src/pgvector \
+    && git clone --branch "${PGVECTOR_TAG}" https://github.com/pgvector/pgvector.git /usr/src/pgvector \
     && cd /usr/src/pgvector \
     && make \
     && make install
 
-# Cleanup build dependencies that are no longer needed
+# Cleanup build dependencies
 RUN apt-get purge -y --auto-remove \
     build-essential \
+    # git make gcc "postgresql-server-dev-${PG_MAJOR_VERSION}" were re-installed for pgvector, purge them too
     git \
     make \
     gcc \
-    "postgresql-server-dev-${MY_PG_VER}" \
+    "postgresql-server-dev-${PG_MAJOR_VERSION}" \
     wget \
-    # gnupg can be kept if future repo additions are needed, but for now, let's purge
-    # build-essential includes gcc, make etc.
-    # git was for pgvector
-    # postgresql-server-dev-${MY_PG_VER} was for pgvector and potentially postgis from source (not used here)
-    # No, let's be more specific about what to remove after pgvector build
-    # Keep: lsb-release, gnupg, ca-certificates (core OS/apt functionality)
-    # Remove: wget (used for key), build-essential, git, make, gcc, postgresql-server-dev-${MY_PG_VER} (if only needed for build)
-    # The following were installed specifically for building:
-    # wget was also for initial setup
+    # gnupg might be needed if other repositories are added later, but for now, we can remove it
+    # if it was only for the postgresql repo key. lsb-release and ca-certificates are generally kept.
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/* \
     && rm -rf /usr/src/pgvector

@@ -10,22 +10,20 @@ This Docker image extends the official PostgreSQL image with PostGIS and pgvecto
 
 ## Pre-built Images
 
-Pre-built images are available on GitHub Container Registry (GHCR). Replace `yourusername/postgis_pgvector` with your actual image path.
+Pre-built images are available on GitHub Container Registry (GHCR). Replace `yourusername/yourrepositoryname` with your actual GHCR path (e.g., `ghcr.io/naorpeled/typeorm-postgres-docker`).
 
-- `ghcr.io/yourusername/postgis_pgvector:pg16-pgvectorv0.8.0` (also tagged as `latest`)
-- `ghcr.io/yourusername/postgis_pgvector:pg15-pgvectorv0.8.0`
-- `ghcr.io/yourusername/postgis_pgvector:pg16-pgvectorv0.7.2`
-- `ghcr.io/yourusername/postgis_pgvector:pg15-pgvectorv0.7.2`
+Example tags (refer to the `publish.yml` workflow matrix for all combinations):
 
-(Note: Update image tags based on your publishing workflow in `.github/workflows/publish.yml`)
+- `ghcr.io/yourusername/yourrepositoryname:pg16-postgis3-pgvectorv0.8.0`
+- `ghcr.io/yourusername/yourrepositoryname:latest` (points to the default latest combination)
 
 ## Build Arguments
 
-The following build arguments can be used with `docker build --build-arg VAR=value` or via the `args` section in `docker-compose.yml` (which can use environment variables):
+The following build arguments can be used with `docker build --build-arg VAR=value` or via the `args` section in `docker-compose.yml` (which can use environment variables from your `.env` file):
 
-- `MY_PG_VER`: PostgreSQL major version (default: 16). Corresponds to environment variable `PG_MAJOR` in `docker-compose.yml`.
-- `MY_POSTGIS_VER`: PostGIS major version (default: 3). Corresponds to environment variable `POSTGIS_MAJOR_VERSION` in `docker-compose.yml`.
-- `MY_PGVECTOR_VER`: pgvector version tag (default: v0.8.0). Corresponds to environment variable `PGVECTOR_VERSION` in `docker-compose.yml`.
+- `PG_MAJOR_VERSION`: PostgreSQL major version (default: 16). In `docker-compose.yml`, fed by `PG_MAJOR` env var.
+- `POSTGIS_MAJOR_VERSION`: PostGIS major version (default: 3). In `docker-compose.yml`, fed by `POSTGIS_MAJOR_VERSION` env var.
+- `PGVECTOR_TAG`: pgvector version tag (e.g., `v0.8.0`, default: v0.8.0). In `docker-compose.yml`, fed by `PGVECTOR_VERSION` env var.
 
 ## Building the Image
 
@@ -34,10 +32,10 @@ The following build arguments can be used with `docker build --build-arg VAR=val
 docker build -t your-image-name .
 
 # Build with custom versions (using Docker build args)
-docker build \
-  --build-arg MY_PG_VER=15 \
-  --build-arg MY_POSTGIS_VER=3 \
-  --build-arg MY_PGVECTOR_VER=v0.7.2 \
+docker build \\
+  --build-arg PG_MAJOR_VERSION=15 \\
+  --build-arg POSTGIS_MAJOR_VERSION=3 \\
+  --build-arg PGVECTOR_TAG=v0.7.2 \\
   -t your-image-name:custom .
 ```
 
@@ -45,60 +43,47 @@ docker build \
 
 ### Using `docker run`
 
-To ensure pgvector is properly preloaded for optimal performance (especially for certain index types), pass the `shared_preload_libraries` setting to the `postgres` command:
+To ensure pgvector is properly preloaded for optimal performance, pass the `shared_preload_libraries` setting to the `postgres` command. This is handled by the `command` directive in the provided `docker-compose.yml`.
 
 ```bash
-docker run -d \
-  --name postgres-gis-vector \
-  -e POSTGRES_PASSWORD=yourpassword \
-  -e POSTGRES_USER=youruser \
-  -e POSTGRES_DB=yourdb \
-  -p 5432:5432 \
-  -v postgres_data_volume:/var/lib/postgresql/data \
+docker run -d \\
+  --name postgres-gis-vector \\
+  -e POSTGRES_PASSWORD=yourpassword \\
+  -e POSTGRES_USER=youruser \\
+  -e POSTGRES_DB=yourdb \\
+  -p 5432:5432 \\
+  -v postgres_data_volume:/var/lib/postgresql/data \\
   your-image-name postgres -c shared_preload_libraries=vector
 ```
 
 ### Using `docker-compose.yml`
 
-The provided `docker-compose.yml` can be used to build and run the image. To enable pgvector preloading, add the `command` directive to the `db` service:
+The provided `docker-compose.yml` is configured to build and run the image, including preloading pgvector via the `command` directive.
 
 ```yaml
-version: "3.8"
-
+# docker-compose.yml (snippet)
 services:
   db:
     build:
       context: .
       args:
-        MY_PG_VER: ${PG_MAJOR:-16}
-        MY_POSTGIS_VER: ${POSTGIS_MAJOR_VERSION:-3}
-        MY_PGVECTOR_VER: ${PGVECTOR_VERSION:-v0.8.0}
-    command: postgres -c shared_preload_libraries=vector # Add this line for pgvector
+        PG_MAJOR_VERSION: ${PG_MAJOR:-16}
+        POSTGIS_MAJOR_VERSION: ${POSTGIS_MAJOR_VERSION:-3}
+        PGVECTOR_TAG: ${PGVECTOR_VERSION:-v0.8.0}
+    command: postgres -c shared_preload_libraries=vector # Ensures pgvector preloading
     environment:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-test} # TypeORM test default
       POSTGRES_USER: ${POSTGRES_USER:-test} # TypeORM test default
       POSTGRES_DB: ${POSTGRES_DB:-test} # TypeORM test default
-      ADDITIONAL_DATABASES: ${ADDITIONAL_DATABASES:-}
-    ports:
-      - "${POSTGRES_PORT:-5432}:5432"
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-test}"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-
-volumes:
-  postgres_data:
+      # ... other environment variables ...
 ```
 
-Create a `.env` file in the same directory as `docker-compose.yml` to set environment variables for compose (optional, defaults are provided):
+Create a `.env` file in the same directory as `docker-compose.yml` to set build arguments and PostgreSQL credentials (optional, defaults are provided):
 
 ```env
 # .env (example)
 PG_MAJOR=16
-POSTGRES_MAJOR_VERSION=3
+POSTGIS_MAJOR_VERSION=3
 PGVECTOR_VERSION=v0.8.0
 
 POSTGRES_PASSWORD=supersecret
@@ -118,8 +103,8 @@ docker compose up --build -d
 
 This repository includes GitHub Actions workflows:
 
-- `test.yml`: Builds the Docker image with a matrix of PostgreSQL and pgvector versions and runs basic extension checks.
-- `publish.yml`: Builds and publishes the Docker image to GHCR on tagged releases (e.g., `v1.0.0`). Ensure you update `IMAGE_NAME` in the workflow to your desired GHCR path (e.g., `yourusername/yourrepository`).
+- `.github/workflows/test.yml`: Builds the Docker image with a matrix of PostgreSQL versions and pgvector tags, and runs basic extension checks. `POSTGIS_MAJOR_VERSION` is typically fixed (e.g., to 3) in these tests.
+- `.github/workflows/publish.yml`: Builds and publishes the Docker image to GHCR on tagged releases (e.g., `v1.0.0`). The image name on GHCR will be based on your GitHub username/organization and repository name (e.g., `ghcr.io/yourusername/yourrepositoryname`).
 
 ## TypeORM Compatibility
 
@@ -127,6 +112,7 @@ This image is configured to be a drop-in replacement for PostgreSQL in TypeORM p
 
 - Default credentials in `docker-compose.yml` (`test`/`test`/`test`) match common TypeORM test configurations.
 - Ensure your TypeORM datasource configuration matches the environment variables used (e.g., `POSTGRES_USER`, `POSTGRES_PASSWORD`, `POSTGRES_DB`, `POSTGRES_PORT`).
+- The image ensures `pgvector` is preloaded via `shared_preload_libraries=vector` when run with the provided `docker-compose.yml` or an equivalent `docker run` command, which is crucial for some pgvector features and performance.
 
 This setup ensures that TypeORM can connect and utilize PostGIS and pgvector functionalities seamlessly.
 
@@ -134,27 +120,24 @@ This setup ensures that TypeORM can connect and utilize PostGIS and pgvector fun
 
 Inherits all environment variables from the official PostgreSQL image. See the [official PostgreSQL image documentation](https://hub.docker.com/_/postgres/) for details.
 
-Additional environment variables:
+The build arguments `PG_MAJOR_VERSION`, `POSTGIS_MAJOR_VERSION`, and `PGVECTOR_TAG` are also exposed as environment variables with the same names within the running container for runtime inspection.
 
-- `ADDITIONAL_DATABASES`: Comma-separated list of additional databases to create and initialize with extensions
+Additional runtime environment variables for the entrypoint script:
 
-### Testing
+- `ADDITIONAL_DATABASES`: Comma-separated list of additional databases to create and initialize with extensions.
 
-The repository includes GitHub Actions workflows that:
+### Local Testing with `docker-compose.test.yml`
 
-1. Test the image build with different PostgreSQL and pgvector versions
-2. Verify that PostGIS and pgvector extensions work correctly
-3. Test creation and initialization of additional databases
+The repository includes `docker-compose.test.yml` for more comprehensive local testing that mirrors some aspects of the CI tests.
 
-To run tests locally:
+To run tests locally using this file:
 
 ```bash
-# Build and test with default versions
-docker build -t postgres-postgis-pgvector:test .
-docker-compose -f docker-compose.test.yml up --exit-code-from test
+# Build and test with default versions using environment variables from your .env or defaults
+docker compose -f docker-compose.test.yml up --build --exit-code-from test
 
-# Test with specific versions
-PG_MAJOR=15 PGVECTOR_VERSION=v0.7.2 docker-compose -f docker-compose.test.yml up --exit-code-from test
+# Test with specific versions by setting environment variables for the compose command:
+PG_MAJOR=15 POSTGIS_MAJOR_VERSION=3 PGVECTOR_VERSION=v0.7.2 docker compose -f docker-compose.test.yml up --build --exit-code-from test
 ```
 
 ## License

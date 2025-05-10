@@ -12,8 +12,10 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        pg_version: [16, 15]
-        pgvector_version: [v0.8.0, v0.7.2]
+        # Renaming for clarity in matrix, maps to Dockerfile ARGs
+        pg_version_matrix: [16, 15] # Corresponds to PG_MAJOR_VERSION
+        pgvector_tag_matrix: [v0.8.0, v0.7.2] # Corresponds to PGVECTOR_TAG
+        # POSTGIS_MAJOR_VERSION defaults to 3 in Dockerfile and is not matrixed here
 
     steps:
       - uses: actions/checkout@v4
@@ -22,27 +24,31 @@ jobs:
         uses: docker/setup-buildx-action@v3
 
       - name: Build Docker image
+        id: build
         uses: docker/build-push-action@v5
         with:
           context: .
-          load: true
-          tags: postgres-postgis-pgvector:test-${{ matrix.pg_version }}-pgvector${{ matrix.pgvector_version }}
+          load: true # Load image into local Docker daemon for testing
+          tags: postgres-postgis-pgvector:test-${{ matrix.pg_version_matrix }}-pgvector${{ matrix.pgvector_tag_matrix }}
           build-args: |
-            MY_PG_VER=${{ matrix.pg_version }}
-            MY_POSTGIS_VER=3
-            MY_PGVECTOR_VER=${{ matrix.pgvector_version }}
+            PG_MAJOR_VERSION=${{ matrix.pg_version_matrix }}
+            POSTGIS_MAJOR_VERSION=3 # Keep PostGIS version fixed for these tests, or add to matrix
+            PGVECTOR_TAG=${{ matrix.pgvector_tag_matrix }}
 
       - name: Start PostgreSQL container and test extensions
         run: |
+          IMAGE_TAG="postgres-postgis-pgvector:test-${{ matrix.pg_version_matrix }}-pgvector${{ matrix.pgvector_tag_matrix }}"
+          echo "Testing image: $IMAGE_TAG"
+
           docker run -d --name test-db \
             -e POSTGRES_PASSWORD=test \
             -e POSTGRES_USER=test \
             -e POSTGRES_DB=test \
-            postgres-postgis-pgvector:test-${{ matrix.pg_version }}-pgvector${{ matrix.pgvector_version }} \
-            postgres -c shared_preload_libraries=vector
+            $IMAGE_TAG \
+            postgres -c shared_preload_libraries=vector # Ensure pgvector is preloaded
 
           echo "Waiting for PostgreSQL to start..."
-          sleep 15
+          sleep 15 # Allow time for PostgreSQL to initialize
 
           echo "PostgreSQL logs:"
           docker logs test-db
@@ -50,14 +56,14 @@ jobs:
           echo "Checking PostGIS version..."
           docker exec test-db psql -U test -d test -c "SELECT postgis_full_version();"
 
-          echo "Checking pgvector version (vector is loaded)..."
+          echo "Checking pgvector extension version..."
           docker exec test-db psql -U test -d test -c "CREATE EXTENSION IF NOT EXISTS vector; SELECT extversion FROM pg_extension WHERE extname = 'vector';"
 
-          echo "Attempting to create a table with a vector column..."
+          echo "Attempting to create a table with a vector column and insert data..."
           docker exec test-db psql -U test -d test -c "CREATE TABLE items (id bigserial PRIMARY KEY, embedding vector(3)); INSERT INTO items (embedding) VALUES ('[1,2,3]'), ('[4,5,6]'); SELECT COUNT(*) FROM items;"
 
       - name: Stop and remove container
-        if: always()
+        if: always() # Ensure cleanup even if previous steps fail
         run: |
           docker stop test-db || true
           docker rm test-db || true

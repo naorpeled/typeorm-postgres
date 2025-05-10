@@ -5,20 +5,17 @@ services:
     build:
       context: .
       args:
-        MY_PG_VER: ${PG_MAJOR:-16}
-        MY_POSTGIS_VER: ${POSTGIS_MAJOR_VERSION:-3}
-        MY_PGVECTOR_VER: ${PGVECTOR_VERSION:-v0.8.0}
+        PG_MAJOR_VERSION: ${PG_MAJOR:-16} # Environment variable PG_MAJOR, defaults to 16
+        POSTGIS_MAJOR_VERSION: ${POSTGIS_MAJOR_VERSION:-3} # Environment variable POSTGIS_MAJOR_VERSION, defaults to 3
+        PGVECTOR_TAG: ${PGVECTOR_VERSION:-v0.8.0} # Environment variable PGVECTOR_VERSION, defaults to v0.8.0
     environment:
-      # TypeORM test defaults
+      # TypeORM test defaults, or override with your own .env file
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-test}
       POSTGRES_USER: ${POSTGRES_USER:-test}
       POSTGRES_DB: ${POSTGRES_DB:-test}
-      # For TypeORM CI testing, use:
-      # POSTGRES_USER: test
-      # POSTGRES_PASSWORD: test
-      # POSTGRES_DB: test
-      # Optional: Comma-separated list of additional databases to create
       ADDITIONAL_DATABASES: ${ADDITIONAL_DATABASES:-}
+      # The following are set inside the Dockerfile from build ARGs for runtime access if needed:
+      # PG_MAJOR_VERSION, POSTGIS_MAJOR_VERSION, PGVECTOR_TAG
     ports:
       - "${POSTGRES_PORT:-5432}:5432"
     volumes:
@@ -28,6 +25,9 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
+    # Add the command to preload pgvector for optimal performance
+    # This ensures shared_preload_libraries includes 'vector'
+    command: postgres -c shared_preload_libraries=vector
 
 volumes:
   postgres_data:
