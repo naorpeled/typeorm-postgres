@@ -26,9 +26,9 @@ RUN apt-get update \
     gnupg \
     ca-certificates \
     wget \
-    # Add PostgreSQL official repository
-    && sh -c 'echo "deb http://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" > /etc/apt/sources.list.d/pgdg.list' \
-    && wget --quiet -O - https://www.postgresql.org/media/keys/ACCC4CF8.asc | apt-key add - \
+    # Add PostgreSQL official repository using signed-by (apt-key is removed in newer Debian)
+    && wget --quiet -O /usr/share/keyrings/postgresql-archive-keyring.gpg https://www.postgresql.org/media/keys/ACCC4CF8.asc \
+    && sh -c 'echo "deb [signed-by=/usr/share/keyrings/postgresql-archive-keyring.gpg] http://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" > /etc/apt/sources.list.d/pgdg.list' \
     # Update package lists again after adding the new repository
     && apt-get update \
     # Install build tools and PostgreSQL development packages from PGDG
